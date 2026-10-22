@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoMate · 个人 AI 效率助理</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --border: #e3e6ea;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-soft: #eff4ff;
+    --bubble: #f2f4f7;
+    --remind-bg: #fff8e6;
+    --remind-border: #f0d9a0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 24px 20px 0; height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: baseline; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .sub { font-size: 13px; color: var(--muted); }
+  .status { margin-left: auto; font-size: 12px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; display: inline-block; }
+  .dot.on { background: #22c55e; }
+
+  #log { flex: 1; overflow-y: auto; padding: 20px 0; }
+  .msg { margin-bottom: 18px; display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 78%; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap;
+    word-break: break-word; background: var(--bubble);
+  }
+  .msg.user .bubble { background: var(--accent); color: #fff; }
+  .msg.assistant .bubble { background: var(--panel); border: 1px solid var(--border); }
+  .bubble .cursor { display: inline-block; width: 6px; background: var(--muted); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .reminder {
+    background: var(--remind-bg); border: 1px solid var(--remind-border);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px;
+  }
+  .reminder b { color: #92610a; }
+
+  .task {
+    background: #eef4ff; border: 1px solid #c3d7f5;
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .task b { color: #1d4ed8; }
+  .task.failed { background: #fdf0f0; border-color: #f3c2c2; }
+  .task.failed b { color: #b91c1c; }
+
+  form { display: flex; gap: 10px; padding: 14px 0 20px; border-top: 1px solid var(--border); }
+  input[type=text] {
+    flex: 1; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 15px; background: var(--panel); color: var(--text); outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  button {
+    padding: 11px 22px; border: none; border-radius: 10px; background: var(--accent);
+    color: #fff; font-size: 15px; cursor: pointer;
+  }
+  button:disabled { background: #9ca3af; cursor: not-allowed; }
+  .meta { font-size: 12px; color: var(--muted); padding-bottom: 14px; min-height: 18px; }
+
+  .app { display: flex; height: 100vh; }
+  .main { flex: 1; display: flex; min-width: 0; }
+  aside {
+    width: 232px; flex-shrink: 0; border-right: 1px solid var(--border);
+    background: var(--panel); display: flex; flex-direction: column;
+    padding: 14px 10px; gap: 10px;
+  }
+  #newSess { width: 100%; padding: 9px 0; font-size: 14px; }
+  #sessList { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .sess-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .sess-item:hover { background: var(--bubble); }
+  .sess-item.active { background: var(--accent-soft); }
+  .sess-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess-del {
+    display: none; background: none; border: none; color: var(--muted);
+    padding: 0 4px; font-size: 14px; cursor: pointer; line-height: 1;
+  }
+  .sess-item:hover .sess-del { display: inline-block; }
+  .sess-del:hover { color: #dc2626; }
+  .sess-empty { font-size: 12px; color: var(--muted); padding: 8px 10px; }
+
+  .steps { margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
+  .step { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .step .sdot { width: 6px; height: 6px; border-radius: 50%; background: #9ca3af; flex-shrink: 0; }
+  .step.done .sdot { background: #22c55e; }
+  .step.failed .sdot { background: #dc2626; }
+  .step .tname { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #4b5563; }
+  .step .tms { color: #9ca3af; }
+  .step details { width: 100%; }
+  .step summary { cursor: pointer; color: #9ca3af; font-size: 11px; }
+  .step pre {
+    background: var(--bubble); border-radius: 6px; padding: 6px 8px; font-size: 11px;
+    overflow: auto; max-height: 160px; margin: 4px 0 0; white-space: pre-wrap; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <button id="newSess" type="button">＋ 新会话</button>
+    <div id="sessList"></div>
+  </aside>
+  <div class="main">
+    <div class="wrap">
+      <header>
+        <h1>GoMate</h1>
+        <span class="sub">Go · Eino · MCP</span>
+        <div class="status">
+          <span id="pushState"><span class="dot"></span> 推送未连接</span>
+          <span id="toolState"></span>
+        </div>
+      </header>
+
+      <div id="log"></div>
+
+      <div class="meta" id="meta"></div>
+
+      <form id="form">
+        <input type="text" id="input" placeholder="问我任何事，或让我记笔记 / 加待办 / 设提醒…" autocomplete="off">
+        <button type="submit" id="send">发送</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const log = document.getElementById('log');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const meta = document.getElementById('meta');
+const sessList = document.getElementById('sessList');
+
+// 会话 id 持久化在 localStorage：刷新页面、重启应用后都回到同一个会话。
+// 空字符串表示「还没发过消息的新会话」，由服务端在首轮对话时分配 id。
+let SESSION = localStorage.getItem('gomate.session') || '';
+
+function addMsg(role, text) {
+  const row = document.createElement('div');
+  row.className = 'msg ' + role;
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = text;
+  row.appendChild(b);
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  return b;
+}
+
+function addReminder(p) {
+  const el = document.createElement('div');
+  el.className = 'reminder';
+  el.innerHTML = '<b>⏰ 提醒</b>　' + escapeHtml(p.title) +
+                 '<span style="color:#6b7280">　（' + escapeHtml(p.fireAt || '') + '）</span>';
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+// 定时 Agent 任务的结果卡片（③ 主动式 Agent）
+function addTaskCard(p) {
+  const el = document.createElement('div');
+  el.className = 'task' + (p.ok ? '' : ' failed');
+  const head = document.createElement('div');
+  head.innerHTML = '<b>🤖 定时任务</b>　' + escapeHtml(p.title || '');
+  const body = document.createElement('div');
+  body.textContent = p.result || '（无内容）';
+  el.appendChild(head);
+  el.appendChild(body);
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+// 渲染一步工具调用（② 执行过程可视化）。
+// tool_start 先占位，tool_end 找到最后一个同名未完成项补全耗时与结果。
+function renderStep(box, s) {
+  if (s.kind === 'tool_start') {
+    const item = document.createElement('div');
+    item.className = 'step';
+    item.dataset.name = s.name;
+    item.dataset.args = s.args || '';
+    item.innerHTML = '<span class="sdot"></span><span>调用 <span class="tname">' +
+                     escapeHtml(s.name) + '</span>…</span>';
+    box.appendChild(item);
+  } else {
+    const items = box.querySelectorAll('.step[data-name="' + CSS.escape(s.name) + '"]:not(.done)');
+    let item = items.length ? items[items.length - 1] : null;
+    if (!item) {
+      item = document.createElement('div');
+      item.className = 'step';
+      item.dataset.name = s.name;
+      item.dataset.args = '';
+      box.appendChild(item);
+    }
+    item.classList.add('done');
+    if (!s.ok) item.classList.add('failed');
+    const args = item.dataset.args || '';
+    item.innerHTML = '<span class="sdot"></span><span><span class="tname">' +
+      escapeHtml(s.name) + '</span>' + (s.ok ? ' 完成' : ' 失败') +
+      ' <span class="tms">' + (s.ms || 0) + 'ms</span></span>' +
+      '<details><summary>参数与结果</summary>' +
+      (args ? '<pre>' + escapeHtml(args) + '</pre>' : '') +
+      (s.result ? '<pre>' + escapeHtml(s.result) + '</pre>' : '') +
+      '</details>';
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- 对话：POST + 手工解析 SSE ----------
+// 不用 EventSource 是因为它只支持 GET，而提问内容需要放在请求体里。
+async function ask(text) {
+  const bubble = addMsg('assistant', '');
+  // 工具执行步骤挂在同一条消息行里，气泡下方
+  const stepsBox = document.createElement('div');
+  stepsBox.className = 'steps';
+  bubble.parentElement.appendChild(stepsBox);
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor';
+  bubble.appendChild(cursor);
+
+  let res;
+  try {
+    res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: text, session_id: SESSION})
+    });
+  } catch (e) {
+    cursor.remove();
+    bubble.textContent = '网络错误：' + e;
+    return;
+  }
+  if (!res.ok) {
+    cursor.remove();
+    bubble.textContent = '请求失败（' + res.status + '）：' + await res.text();
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let acc = '';
+
+  const handle = (block) => {
+    let event = 'message', data = '';
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event: ')) event = line.slice(7).trim();
+      else if (line.startsWith('data: ')) data += line.slice(6);
+    }
+    if (!data) return;
+    let payload;
+    try { payload = JSON.parse(data); } catch { return; }
+
+    if (event === 'delta') {
+      acc += payload.text;
+      bubble.textContent = acc;
+      bubble.appendChild(cursor);
+      log.scrollTop = log.scrollHeight;
+    } else if (event === 'step') {
+      renderStep(stepsBox, payload);
+    } else if (event === 'error') {
+      cursor.remove();
+      bubble.textContent = '出错：' + payload.error;
+    } else if (event === 'done') {
+      cursor.remove();
+      if (!acc) bubble.textContent = payload.text || '(无内容)';
+      meta.textContent = '本次消耗 token：' + payload.tokens.total +
+                         '　·　本会话累计：' + payload.used + ' / ' + payload.budget;
+      // 首轮对话后服务端才分配 session_id，此刻落盘并刷新侧边栏
+      if (payload.session_id && payload.session_id !== SESSION) {
+        SESSION = payload.session_id;
+        localStorage.setItem('gomate.session', SESSION);
+        refreshSessions();
+      }
+    }
+  };
+
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, {stream: true});
+    // SSE 以空行分隔事件；最后一段可能不完整，留在 buffer 里等下一块
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      handle(buf.slice(0, idx));
+      buf = buf.slice(idx + 2);
+    }
+  }
+  if (buf.trim()) handle(buf);
+  cursor.remove();
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  addMsg('user', text);
+  input.value = '';
+  sendBtn.disabled = true;
+  meta.textContent = '';
+  try { await ask(text); } finally { sendBtn.disabled = false; input.focus(); }
+});
+
+// ---------- 会话侧边栏（① 会话持久化）----------
+async function refreshSessions() {
+  let d = {};
+  try { d = await (await fetch('/api/sessions')).json(); } catch { return; }
+  sessList.innerHTML = '';
+  const list = d.sessions || [];
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'sess-empty';
+    empty.textContent = '还没有会话，发消息即开始';
+    sessList.appendChild(empty);
+    return;
+  }
+  for (const s of list) {
+    const item = document.createElement('div');
+    item.className = 'sess-item' + (s.id === SESSION ? ' active' : '');
+
+    const title = document.createElement('span');
+    title.className = 'sess-title';
+    title.textContent = s.title;
+    title.title = s.title + '（' + s.updated_at + '）';
+
+    const del = document.createElement('button');
+    del.className = 'sess-del';
+    del.type = 'button';
+    del.textContent = '×';
+    del.title = '删除会话';
+    del.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm('删除会话「' + s.title + '」？历史记录将一并删除。')) return;
+      await fetch('/api/sessions/' + encodeURIComponent(s.id), {method: 'DELETE'});
+      if (s.id === SESSION) {
+        SESSION = '';
+        localStorage.removeItem('gomate.session');
+        log.innerHTML = '';
+        meta.textContent = '';
+      }
+      refreshSessions();
+    };
+
+    item.appendChild(title);
+    item.appendChild(del);
+    item.onclick = () => loadSession(s.id);
+    sessList.appendChild(item);
+  }
+}
+
+async function loadSession(id) {
+  SESSION = id;
+  localStorage.setItem('gomate.session', id);
+  log.innerHTML = '';
+  meta.textContent = '';
+  let d = {};
+  try { d = await (await fetch('/api/sessions/' + encodeURIComponent(id) + '/messages')).json(); }
+  catch { addMsg('assistant', '历史加载失败'); return; }
+  for (const m of d.messages || []) addMsg(m.role, m.content);
+  refreshSessions();
+  input.focus();
+}
+
+function newSession() {
+  SESSION = '';
+  localStorage.removeItem('gomate.session');
+  log.innerHTML = '';
+  meta.textContent = '';
+  refreshSessions();
+  input.focus();
+}
+document.getElementById('newSess').addEventListener('click', newSession);
+
+// 进入页面：有上次的会话就恢复，否则只是个空列表
+if (SESSION) loadSession(SESSION); else refreshSessions();
+
+// ---------- 主动推送：WebSocket + 退避重连 + seq 补发 ----------
+// lastSeq 只增不减：服务端进程重启后 seq 会从 1 重新计数，
+// 若无条件用收到的 seq 覆盖，lastSeq 反而变小，下次重连就会重复收到旧提醒。
+let lastSeq = 0;
+let retry = 0;
+let retryTimer = null;
+
+const pushState = document.getElementById('pushState');
+function setPushState(html) { pushState.innerHTML = html; }
+
+function connectPush() {
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(proto + '://' + location.host + '/api/ws?last_seq=' + lastSeq);
+
+  ws.onopen = () => {
+    retry = 0;                            // 连上了就把退避计数清零
+    setPushState('<span class="dot on"></span> 推送已连接');
+  };
+  ws.onmessage = (ev) => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.seq > lastSeq) lastSeq = m.seq; // 记住 seq，重连时用它补发漏掉的消息
+    if (m.type === 'reminder') addReminder(m.payload);
+    else if (m.type === 'agent_task') addTaskCard(m.payload);
+  };
+  ws.onclose = () => {
+    retry++;
+    // 指数退避：1s 2s 4s … 封顶 15s。
+    // 固定间隔在服务未启动时等于每秒疯狂重连，既刷不到结果也刷爆日志。
+    const delay = Math.min(15, Math.pow(2, Math.min(retry - 1, 4)));
+    // 连不上多半是服务没起来，给一条能直接照做的提示，比干等有用
+    const hint = retry >= 3 ? '<span style="color:#b45309">　服务未启动？运行 ./bin/gomate serve</span>' : '';
+    setPushState('<span class="dot"></span> 推送断开，' + delay + 's 后第 ' + retry + ' 次重连…' + hint);
+    retryTimer = setTimeout(connectPush, delay * 1000);
+  };
+  ws.onerror = () => ws.close();
+}
+connectPush();
+
+// 页面重新可见时立刻重试：笔记本休眠/切标签期间连接多半已死，
+// 而退避可能正卡在 15s，白等。
+document.addEventListener('visibilitychange', () => {
+  // 只在「正排队等重连」时提前触发。若此刻已有连接在握手中，
+  // 再建一个 WebSocket 会造成两条连接并存、消息重复。
+  if (document.visibilityState === 'visible' && retry > 0 && retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    connectPush();
+  }
+});
+
+// ---------- 工具清单 ----------
+fetch('/api/tools').then(r => r.json()).then(d => {
+  const t = d.tools || [];
+  document.getElementById('toolState').textContent = t.length ? '已接入 ' + t.length + ' 个工具' : '无工具';
+  if (t.length) document.getElementById('toolState').title = t.join('、');
+}).catch(() => {});
+
+input.focus();
+</script>
+</body>
+</html>
